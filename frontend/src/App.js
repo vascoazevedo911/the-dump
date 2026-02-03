@@ -30,7 +30,7 @@ export default function TheDump() {
       loadDocuments();
       loadStats();
     }
-  }, []);
+  },[loadDocuments, loadStats]);
 
   const getAuthHeaders = () => ({ 'Authorization': `Bearer ${localStorage.getItem('token')}` });
 
