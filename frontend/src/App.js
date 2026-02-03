@@ -30,6 +30,7 @@ export default function TheDump() {
       loadDocuments();
       loadStats();
     }
+     // eslint-disable-next-line react-hooks/exhaustive-deps
   },[loadDocuments, loadStats]);
 
   const getAuthHeaders = () => ({ 'Authorization': `Bearer ${localStorage.getItem('token')}` });
