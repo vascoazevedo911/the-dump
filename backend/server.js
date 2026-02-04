@@ -41,7 +41,10 @@ const pool = new Pool({
   user: process.env.DB_USER || 'postgres',
   password: process.env.DB_PASSWORD,
   max: 20,
-  ssl: process.env.DB_SSL === 'true' ? { rejectUnauthorized: false } : false
+  ssl: process.env.DB_SSL === 'true' ? { 
+    rejectUnauthorized: false,
+    require: true
+    } : false
 });
 
 pool.query('SELECT NOW()', (err, res) => {
