@@ -18,6 +18,7 @@ export default function TheDump() {
   const [viewMode, setViewMode] = useState('grid');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+  const [previewUrl, setPreviewUrl] = useState(null);
 
   const logo = '/logo.png'; // Logo do The Dump
 
@@ -56,21 +57,30 @@ export default function TheDump() {
 
   useEffect(() => {
     let currentObjectUrl = null;
+    let cancelled = false;
     if (selectedDoc?.fileType && selectedDoc.fileType.includes('pdf') && selectedDoc.url) {
       (async () => {
         try {
           const res = await fetch(selectedDoc.url, { headers: getAuthHeaders() });
           const blob = await res.blob();
+          if (cancelled) return;
           currentObjectUrl = URL.createObjectURL(blob);
+          setPreviewUrl(currentObjectUrl);
         } catch (err) {
           console.error('Erro ao carregar preview do PDF:', err);
+          setPreviewUrl(null);
         }
       })();
     } else {
+      setPreviewUrl(null);
     }
 
     return () => {
-      if (currentObjectUrl) URL.revokeObjectURL(currentObjectUrl);
+      cancelled = true;
+      if (currentObjectUrl) {
+        URL.revokeObjectURL(currentObjectUrl);
+      }
+      setPreviewUrl(null);
     };
   }, [selectedDoc, getAuthHeaders]);
 
@@ -531,7 +541,7 @@ export default function TheDump() {
                   selectedDoc.fileType && selectedDoc.fileType.includes('image') ? (
                     <img src={selectedDoc.url} alt={selectedDoc.fileName} style={{ width: '100%', borderRadius: '0.75rem', maxHeight: '60vh', objectFit: 'contain' }} />
                   ) : selectedDoc.fileType && selectedDoc.fileType.includes('pdf') ? (
-                    <iframe src={selectedDoc.url} title={selectedDoc.fileName} style={{ width: '100%', height: '70vh', border: 'none', borderRadius: '0.5rem' }} />
+                    <iframe src={previewUrl || selectedDoc.url} title={selectedDoc.fileName} style={{ width: '100%', height: '70vh', border: 'none', borderRadius: '0.5rem' }} />
                   ) : (
                     <object data={selectedDoc.url} type={selectedDoc.fileType} width="100%" height="70vh">
                       <div style={{ padding: '1rem', background: '#f3f4f6', borderRadius: '0.75rem' }}>
