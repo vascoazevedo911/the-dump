@@ -514,10 +514,10 @@ export default function TheDump() {
                   <div style={{ backgroundColor: 'white', borderRadius: '0.75rem', padding: '1.25rem', maxHeight: '20rem', overflow: 'auto' }}>
                     <p style={{ color: '#374151', fontSize: '0.95rem', lineHeight: 1.7, whiteSpace: 'pre-wrap' }}>{selectedDoc.ocrText}</p>
                   </div>
-                  {selectedDoc.ocrConfidence && (
+                  {(selectedDoc.ocrConfidence !== undefined && selectedDoc.ocrConfidence !== null && !Number.isNaN(Number(selectedDoc.ocrConfidence))) && (
                     <div style={{ marginTop: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.875rem', color: '#059669' }}>
                       <TrendingUp className="w-4 h-4" />
-                      <span>Confiança: {selectedDoc.ocrConfidence.toFixed(1)}%</span>
+                      <span>Confiança: {Number(selectedDoc.ocrConfidence).toFixed(1)}%</span>
                     </div>
                   )}
                 </div>
