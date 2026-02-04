@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Upload, Search, FileText, File, Eye, Download, Trash2, Grid, List, CheckCircle, AlertCircle, Loader, X, Database, Image as ImageIcon, LogIn, LogOut, User, Clock, FileCheck, Sparkles } from 'lucide-react';
+import { Upload, Search, FileText, File, Eye, Download, Trash2, Grid, List, CheckCircle, AlertCircle, Loader, X, Database, Zap, Image as ImageIcon, LogIn, LogOut, User, TrendingUp, Clock, FileCheck, Sparkles } from 'lucide-react';
 
 const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:3000';
 
