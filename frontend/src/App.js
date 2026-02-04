@@ -21,6 +21,26 @@ export default function TheDump() {
 
   const logo = '/logo.png'; // Logo do The Dump
 
+  const loadDocuments = async () => {
+    try {
+      const response = await fetch(`${API_URL}/api/documents`, { headers: getAuthHeaders() });
+      const result = await response.json();
+      if (result.success) setDocuments(result.documents);
+    } catch (err) {
+      console.error('Erro ao carregar documentos:', err);
+    }
+  };
+
+  const loadStats = async () => {
+    try {
+      const response = await fetch(`${API_URL}/api/stats`, { headers: getAuthHeaders() });
+      const result = await response.json();
+      if (result.success) setStats(result.stats);
+    } catch (err) {
+      console.error('Erro ao carregar stats:', err);
+    }
+  };
+
   useEffect(() => {
     const token = localStorage.getItem('token');
     const savedUser = localStorage.getItem('user');
@@ -75,26 +95,6 @@ export default function TheDump() {
     setIsAuthenticated(false);
     setUser(null);
     setDocuments([]);
-  };
-
-  const loadDocuments = async () => {
-    try {
-      const response = await fetch(`${API_URL}/api/documents`, { headers: getAuthHeaders() });
-      const result = await response.json();
-      if (result.success) setDocuments(result.documents);
-    } catch (err) {
-      console.error('Erro ao carregar documentos:', err);
-    }
-  };
-
-  const loadStats = async () => {
-    try {
-      const response = await fetch(`${API_URL}/api/stats`, { headers: getAuthHeaders() });
-      const result = await response.json();
-      if (result.success) setStats(result.stats);
-    } catch (err) {
-      console.error('Erro ao carregar stats:', err);
-    }
   };
 
   const handleFileUpload = async (files) => {
