@@ -44,7 +44,8 @@ const pool = new Pool({
   ssl: process.env.DB_SSL === 'true' ? { 
     rejectUnauthorized: false,
     require: true
-    } : false
+    } : false,
+  family: 4
 });
 
 pool.query('SELECT NOW()', (err, res) => {
