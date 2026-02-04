@@ -18,7 +18,6 @@ export default function TheDump() {
   const [viewMode, setViewMode] = useState('grid');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
-  const [previewUrl, setPreviewUrl] = useState(null);
 
   const logo = '/logo.png'; // Logo do The Dump
 
@@ -63,19 +62,15 @@ export default function TheDump() {
           const res = await fetch(selectedDoc.url, { headers: getAuthHeaders() });
           const blob = await res.blob();
           currentObjectUrl = URL.createObjectURL(blob);
-          setPreviewUrl(currentObjectUrl);
         } catch (err) {
           console.error('Erro ao carregar preview do PDF:', err);
-          setPreviewUrl(null);
         }
       })();
     } else {
-      setPreviewUrl(null);
     }
 
     return () => {
       if (currentObjectUrl) URL.revokeObjectURL(currentObjectUrl);
-      setPreviewUrl(null);
     };
   }, [selectedDoc, getAuthHeaders]);
 
