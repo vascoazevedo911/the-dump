@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Upload, Search, FileText, File, Eye, Download, Trash2, Grid, List, CheckCircle, AlertCircle, Loader, X, Database, Zap, Image as ImageIcon, LogIn, LogOut, User, TrendingUp, Clock, FileCheck, Sparkles } from 'lucide-react';
 
 const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:3000';
@@ -21,7 +21,7 @@ export default function TheDump() {
 
   const logo = '/logo.png'; // Logo do The Dump
 
-  const loadDocuments = async () => {
+  const loadDocuments = useCallback(async () => {
     try {
       const response = await fetch(`${API_URL}/api/documents`, { headers: getAuthHeaders() });
       const result = await response.json();
@@ -29,9 +29,9 @@ export default function TheDump() {
     } catch (err) {
       console.error('Erro ao carregar documentos:', err);
     }
-  };
+  }, [getAuthHeaders]);
 
-  const loadStats = async () => {
+  const loadStats = useCallback(async () => {
     try {
       const response = await fetch(`${API_URL}/api/stats`, { headers: getAuthHeaders() });
       const result = await response.json();
@@ -39,7 +39,7 @@ export default function TheDump() {
     } catch (err) {
       console.error('Erro ao carregar stats:', err);
     }
-  };
+  }, [getAuthHeaders]);
 
   useEffect(() => {
     const token = localStorage.getItem('token');
@@ -50,10 +50,9 @@ export default function TheDump() {
       loadDocuments();
       loadStats();
     }
-     // eslint-disable-next-line react-hooks/exhaustive-deps
-  },[loadDocuments, loadStats]);
+  }, [loadDocuments, loadStats]);
 
-  const getAuthHeaders = () => ({ 'Authorization': `Bearer ${localStorage.getItem('token')}` });
+  const getAuthHeaders = useCallback(() => ({ 'Authorization': `Bearer ${localStorage.getItem('token')}` }), []);
 
   const handleAuth = async (e) => {
     e.preventDefault();
