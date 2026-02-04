@@ -1,13 +1,1 @@
-{ 
-    "version": 2,
-    "projects" :[
-        {
-            "name": "backend",
-            "rootDirectory": "backend"     
-        },
-        {
-            "name": "frontend",
-            "rootDirectory": "frontend"     
-        }
-    ]
-}
+{ "rewrites": [{ "source": "/(.*)", "destination": "/" }] }
