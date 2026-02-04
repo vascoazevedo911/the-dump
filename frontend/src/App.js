@@ -536,24 +536,41 @@ export default function TheDump() {
               </button>
             </div>
             <div style={{ padding: '2rem' }}>
-              <div style={{ marginBottom: '2rem' }}>
-                {selectedDoc?.url ? (
-                  selectedDoc.fileType && selectedDoc.fileType.includes('image') ? (
-                    <img src={selectedDoc.url} alt={selectedDoc.fileName} style={{ width: '100%', borderRadius: '0.75rem', maxHeight: '60vh', objectFit: 'contain' }} />
-                  ) : selectedDoc.fileType && selectedDoc.fileType.includes('pdf') ? (
-                    <iframe src={previewUrl || selectedDoc.url} title={selectedDoc.fileName} style={{ width: '100%', height: '70vh', border: 'none', borderRadius: '0.5rem' }} />
+              {selectedDoc.ocrText ? (
+                <div style={{ background: 'linear-gradient(135deg, rgba(16, 185, 129, 0.1) 0%, rgba(5, 150, 105, 0.1) 100%)', border: '2px solid #6ee7b7', borderRadius: '1rem', padding: '1.5rem', marginBottom: '2rem' }}>
+                  <h3 style={{ fontWeight: '700', color: '#065f46', marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '1.125rem' }}>
+                    <Zap className="w-5 h-5 text-emerald-600" /> Texto Extraído por OCR
+                  </h3>
+                  <div style={{ backgroundColor: 'white', borderRadius: '0.75rem', padding: '1.25rem', maxHeight: '60vh', overflow: 'auto' }}>
+                    <p style={{ color: '#374151', fontSize: '0.95rem', lineHeight: 1.7, whiteSpace: 'pre-wrap' }}>{selectedDoc.ocrText}</p>
+                  </div>
+                  {(selectedDoc.ocrConfidence !== undefined && selectedDoc.ocrConfidence !== null && !Number.isNaN(Number(selectedDoc.ocrConfidence))) && (
+                    <div style={{ marginTop: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.875rem', color: '#059669' }}>
+                      <TrendingUp className="w-4 h-4" />
+                      <span>Confiança: {Number(selectedDoc.ocrConfidence).toFixed(1)}%</span>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div style={{ marginBottom: '2rem' }}>
+                  {selectedDoc?.url ? (
+                    selectedDoc.fileType && selectedDoc.fileType.includes('image') ? (
+                      <img src={selectedDoc.url} alt={selectedDoc.fileName} style={{ width: '100%', borderRadius: '0.75rem', maxHeight: '60vh', objectFit: 'contain' }} />
+                    ) : selectedDoc.fileType && selectedDoc.fileType.includes('pdf') ? (
+                      <iframe src={previewUrl || selectedDoc.url} title={selectedDoc.fileName} style={{ width: '100%', height: '70vh', border: 'none', borderRadius: '0.5rem' }} />
+                    ) : (
+                      <object data={selectedDoc.url} type={selectedDoc.fileType} width="100%" height="70vh">
+                        <div style={{ padding: '1rem', background: '#f3f4f6', borderRadius: '0.75rem' }}>
+                          <p>Pré-visualização não disponível para este tipo de arquivo.</p>
+                          <a href={selectedDoc.url} download style={{ color: '#667eea', fontWeight: '600' }}>Baixar {selectedDoc.fileName}</a>
+                        </div>
+                      </object>
+                    )
                   ) : (
-                    <object data={selectedDoc.url} type={selectedDoc.fileType} width="100%" height="70vh">
-                      <div style={{ padding: '1rem', background: '#f3f4f6', borderRadius: '0.75rem' }}>
-                        <p>Pré-visualização não disponível para este tipo de arquivo.</p>
-                        <a href={selectedDoc.url} download style={{ color: '#667eea', fontWeight: '600' }}>Baixar {selectedDoc.fileName}</a>
-                      </div>
-                    </object>
-                  )
-                ) : (
-                  <div style={{ padding: '1rem', background: '#f3f4f6', borderRadius: '0.75rem' }}>Pré-visualização não disponível.</div>
-                )}
-              </div>
+                    <div style={{ padding: '1rem', background: '#f3f4f6', borderRadius: '0.75rem' }}>Pré-visualização não disponível.</div>
+                  )}
+                </div>
+              )}
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem', marginBottom: '2rem', padding: '1.5rem', background: 'linear-gradient(135deg, rgba(102, 126, 234, 0.05) 0%, rgba(118, 75, 162, 0.05) 100%)', borderRadius: '1rem' }}>
                 <div>
                   <div style={{ fontSize: '0.75rem', fontWeight: '600', color: '#6b7280', textTransform: 'uppercase', marginBottom: '0.25rem' }}>Tamanho</div>
