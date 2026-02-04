@@ -29,7 +29,12 @@ cloudinary.config({
 console.log('✅ Cloudinary configurado:', process.env.CLOUDINARY_CLOUD_NAME);
 
 // Configuração
-app.use(cors({ origin: process.env.ALLOWED_ORIGINS?.split(',') || '*', credentials: true }));
+app.use(cors({ 
+  origin: 'https://the-dump-gamma.vercel.app',
+  credentials: true,
+  methods : ['GET', 'POST', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization'] 
+}));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
