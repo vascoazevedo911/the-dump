@@ -21,6 +21,8 @@ export default function TheDump() {
 
   const logo = '/logo.png'; // Logo do The Dump
 
+  const getAuthHeaders = useCallback(() => ({ 'Authorization': `Bearer ${localStorage.getItem('token')}` }), []);
+
   const loadDocuments = useCallback(async () => {
     try {
       const response = await fetch(`${API_URL}/api/documents`, { headers: getAuthHeaders() });
@@ -51,8 +53,6 @@ export default function TheDump() {
       loadStats();
     }
   }, [loadDocuments, loadStats]);
-
-  const getAuthHeaders = useCallback(() => ({ 'Authorization': `Bearer ${localStorage.getItem('token')}` }), []);
 
   const handleAuth = async (e) => {
     e.preventDefault();
