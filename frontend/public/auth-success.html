@@ -16,6 +16,29 @@
         return;
       }
 
+      // show token for debugging and provide manual store button
+      const info = document.createElement('div');
+      info.style.fontFamily = 'system-ui, -apple-system, Segoe UI, Roboto, Noto Sans, sans-serif';
+      info.style.padding = '1rem';
+      info.innerHTML = `<p style="word-break:break-all">Token detected: <strong id=tokendisplay></strong></p>`;
+      const btn = document.createElement('button');
+      btn.textContent = 'Store token and continue';
+      btn.style.padding = '0.5rem 1rem';
+      btn.style.borderRadius = '0.5rem';
+      btn.style.border = '1px solid #ccc';
+      btn.style.background = '#fff';
+      btn.onclick = () => {
+        try {
+          localStorage.setItem('token', token);
+          alert('Token stored to localStorage.token');
+          window.location.replace('/');
+        } catch (e) { alert('Failed to store token: '+e.message); }
+      };
+      info.appendChild(btn);
+      document.body.appendChild(info);
+
+      document.getElementById('tokendisplay').textContent = token;
+
       try {
         localStorage.setItem('token', token);
         const API_URL = (window._env && window._env.REACT_APP_API_URL) || (window.REACT_APP_API_URL) || 'http://localhost:3000';
