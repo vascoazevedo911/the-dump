@@ -12,6 +12,8 @@ const Tesseract = require('tesseract.js');
 const pdfParse = require('pdf-parse');
 const axios = require('axios');
 require('dotenv').config();
+const passport = require('passport');
+const GoogleStrategy = require('passport-google-oauth20').Strategy;
 
 // ✅ Cloudinary
 const cloudinary = require('cloudinary').v2;
@@ -30,13 +32,47 @@ console.log('✅ Cloudinary configurado:', process.env.CLOUDINARY_CLOUD_NAME);
 
 // Configuração
 app.use(cors({ 
-  origin: 'https://the-dump-gamma.vercel.app',
+  origin: process.env.ALLOWED_ORIGINS || 'https://the-dump-gamma.vercel.app',
   credentials: true,
   methods : ['GET', 'POST', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization'] 
 }));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+
+// Passport (Google OAuth)
+app.use(passport.initialize());
+
+passport.use(new GoogleStrategy({
+  clientID: process.env.GOOGLE_CLIENT_ID,
+  clientSecret: process.env.GOOGLE_CLIENT_SECRET,
+  callbackURL: process.env.GOOGLE_CALLBACK_URL || `${process.env.BASE_URL || 'http://localhost:3000'}/auth/google/callback`
+}, async (accessToken, refreshToken, profile, done) => {
+  try {
+    const email = profile.emails && profile.emails[0] && profile.emails[0].value;
+    const name = profile.displayName || (profile.name && `${profile.name.givenName} ${profile.name.familyName}`) || 'Google User';
+
+    if (!email) return done(new Error('No email found in Google profile'));
+
+    const result = await pool.query('SELECT id, email, name FROM users WHERE email = $1', [email]);
+    if (result.rows.length > 0) {
+      const user = result.rows[0];
+      await pool.query('UPDATE users SET last_login = NOW() WHERE id = $1', [user.id]);
+      return done(null, user);
+    }
+
+    // Create user with a random password (schema requires password NOT NULL)
+    const randomPass = crypto.randomBytes(16).toString('hex');
+    const hashed = await bcrypt.hash(randomPass, 10);
+    const insert = await pool.query(
+      'INSERT INTO users (email, password, name) VALUES ($1, $2, $3) RETURNING id, email, name',
+      [email, hashed, name]
+    );
+    return done(null, insert.rows[0]);
+  } catch (err) {
+    return done(err);
+  }
+}));
 
 // PostgreSQL
 const pool = new Pool({
@@ -104,42 +140,23 @@ const authenticateToken = async (req, res, next) => {
 };
 
 // ROTAS - Autenticação
+// Google OAuth routes
+app.get('/auth/google', passport.authenticate('google', { scope: ['profile', 'email'] }));
+
+app.get('/auth/google/callback', passport.authenticate('google', { session: false, failureRedirect: `${process.env.FRONTEND_URL || 'https://the-dump-gamma.vercel.app'}/login` }), (req, res) => {
+  const user = req.user;
+  const token = jwt.sign({ userId: user.id, email: user.email }, process.env.JWT_SECRET || 'secret-key', { expiresIn: '7d' });
+  const redirectUrl = `${process.env.FRONTEND_URL || 'https://the-dump-gamma.vercel.app'}/auth-success?token=${token}`;
+  res.redirect(redirectUrl);
+});
 app.post('/api/auth/register', async (req, res) => {
-  const { email, password, name } = req.body;
-  try {
-    const existing = await pool.query('SELECT id FROM users WHERE email = $1', [email]);
-    if (existing.rows.length > 0) return res.status(400).json({ success: false, error: 'Email já cadastrado' });
-
-    const hashedPassword = await bcrypt.hash(password, 10);
-    const result = await pool.query(
-      'INSERT INTO users (email, password, name) VALUES ($1, $2, $3) RETURNING id, email, name',
-      [email, hashedPassword, name]
-    );
-
-    const user = result.rows[0];
-    const token = jwt.sign({ userId: user.id, email: user.email }, process.env.JWT_SECRET || 'secret-key', { expiresIn: '7d' });
-    res.json({ success: true, token, user });
-  } catch (error) {
-    res.status(500).json({ success: false, error: 'Erro ao registrar' });
-  }
+  // Local registration disabled — use Google OAuth
+  res.status(403).json({ success: false, error: 'Registro local desabilitado. Use o login com Google.' });
 });
 
 app.post('/api/auth/login', async (req, res) => {
-  const { email, password } = req.body;
-  try {
-    const result = await pool.query('SELECT id, email, name, password FROM users WHERE email = $1', [email]);
-    if (result.rows.length === 0) return res.status(401).json({ success: false, error: 'Credenciais inválidas' });
-
-    const user = result.rows[0];
-    const validPassword = await bcrypt.compare(password, user.password);
-    if (!validPassword) return res.status(401).json({ success: false, error: 'Credenciais inválidas' });
-
-    await pool.query('UPDATE users SET last_login = NOW() WHERE id = $1', [user.id]);
-    const token = jwt.sign({ userId: user.id, email: user.email }, process.env.JWT_SECRET || 'secret-key', { expiresIn: '7d' });
-    res.json({ success: true, token, user: { id: user.id, email: user.email, name: user.name } });
-  } catch (error) {
-    res.status(500).json({ success: false, error: 'Erro ao fazer login' });
-  }
+  // Local login disabled — use Google OAuth
+  res.status(403).json({ success: false, error: 'Login local desabilitado. Use o login com Google.' });
 });
 
 // ROTAS - Upload (✅ Modificado para Cloudinary)
@@ -386,6 +403,15 @@ app.get('/api/stats', authenticateToken, async (req, res) => {
     });
   } catch (error) {
     res.status(500).json({ success: false, error: 'Erro ao obter estatísticas' });
+  }
+});
+
+// Return current authenticated user info
+app.get('/api/auth/me', authenticateToken, async (req, res) => {
+  try {
+    res.json({ success: true, user: req.user });
+  } catch (err) {
+    res.status(500).json({ success: false, error: 'Erro ao obter usuário' });
   }
 });
 

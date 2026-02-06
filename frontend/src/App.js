@@ -271,31 +271,22 @@ export default function TheDump() {
             </div>
           )}
 
-          <form onSubmit={handleAuth} style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
-            {authMode === 'register' && (
-              <div>
-                <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: '600', color: '#374151', marginBottom: '0.5rem' }}>Nome Completo</label>
-                <input type="text" name="name" required style={{ width: '100%', padding: '0.875rem 1rem', border: '2px solid #e5e7eb', borderRadius: '0.75rem', fontSize: '1rem', transition: 'all 0.2s' }} onFocus={(e) => e.target.style.borderColor = '#667eea'} onBlur={(e) => e.target.style.borderColor = '#e5e7eb'} />
-              </div>
-            )}
-            <div>
-              <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: '600', color: '#374151', marginBottom: '0.5rem' }}>Email</label>
-              <input type="email" name="email" required style={{ width: '100%', padding: '0.875rem 1rem', border: '2px solid #e5e7eb', borderRadius: '0.75rem', fontSize: '1rem', transition: 'all 0.2s' }} onFocus={(e) => e.target.style.borderColor = '#667eea'} onBlur={(e) => e.target.style.borderColor = '#e5e7eb'} />
-            </div>
-            <div>
-              <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: '600', color: '#374151', marginBottom: '0.5rem' }}>Senha</label>
-              <input type="password" name="password" required style={{ width: '100%', padding: '0.875rem 1rem', border: '2px solid #e5e7eb', borderRadius: '0.75rem', fontSize: '1rem', transition: 'all 0.2s' }} onFocus={(e) => e.target.style.borderColor = '#667eea'} onBlur={(e) => e.target.style.borderColor = '#e5e7eb'} />
-            </div>
-            <button type="submit" disabled={loading} style={{ width: '100%', background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', color: 'white', fontWeight: '700', padding: '1rem', borderRadius: '0.75rem', fontSize: '1rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', boxShadow: '0 10px 25px -5px rgba(102, 126, 234, 0.5)', transition: 'transform 0.2s', cursor: 'pointer' }} onMouseOver={(e) => e.currentTarget.style.transform = 'translateY(-2px)'} onMouseOut={(e) => e.currentTarget.style.transform = 'translateY(0)'}>
-              {loading ? <><Loader className="w-5 h-5 animate-spin" /> Processando...</> : <><LogIn className="w-5 h-5" /> {authMode === 'login' ? 'Entrar' : 'Criar Conta'}</>}
-            </button>
-          </form>
-
-          <div style={{ marginTop: '1.5rem', textAlign: 'center' }}>
-            <button onClick={() => { setAuthMode(authMode === 'login' ? 'register' : 'login'); setError(null); }} style={{ color: '#6b7280', fontWeight: '500', transition: 'color 0.2s' }} onMouseOver={(e) => e.target.style.color = '#667eea'} onMouseOut={(e) => e.target.style.color = '#6b7280'}>
-              {authMode === 'login' ? 'Não tem conta? Registre-se' : 'Já tem conta? Faça login'}
-            </button>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', alignItems: 'center' }}>
+            <p style={{ color: '#6b7280', marginBottom: '0.5rem' }}>Faça login usando sua conta Google</p>
+            <a href={`${API_URL}/auth/google`} style={{ display: 'inline-flex', alignItems: 'center', gap: '0.75rem', marginTop: '0.75rem', background: '#ffffff', color: '#202124', border: '1px solid rgba(0,0,0,0.08)', padding: '0.5rem 1rem', borderRadius: '0.75rem', fontWeight: 700, textDecoration: 'none' }}>
+              <svg width="18" height="18" viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg" style={{ display: 'block' }}>
+                <path fill="#EA4335" d="M24 12c3.3 0 6.2 1.2 8.4 3.1l6.2-6.2C34.7 6.1 29.7 4 24 4 14.9 4 7.3 9.6 4 17.3l7 5.4C12.6 16.1 17.8 12 24 12z"/>
+                <path fill="#34A853" d="M46.5 24c0-1.6-.1-2.8-.4-4H24v8h13.1c-.6 3-2.6 5.5-5.5 7.1l8.4 6.3C43.7 37.6 46.5 31.3 46.5 24z"/>
+                <path fill="#4A90E2" d="M11.9 29.7A14.4 14.4 0 0 1 12 24c0-1.6.3-3.1.8-4.5l-7-5.4C2.6 16.9 1 19.3 1 24c0 4.7 1.6 8.4 4.9 11.3l6-5.6z"/>
+                <path fill="#FBBC05" d="M24 44c6.1 0 11.4-2 15.2-5.5l-8.4-6.3C30.9 34.9 27.7 36 24 36c-6.2 0-11.4-4.1-13.1-9.7l-7 5.4C7.3 38.4 14.9 44 24 44z"/>
+              </svg>
+              <span>Entrar com Google</span>
+            </a>
           </div>
+
+          
+
+          
         </div>
       </div>
     );
