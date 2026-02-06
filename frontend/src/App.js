@@ -20,15 +20,27 @@ export default function TheDump() {
   const [error, setError] = useState(null);
   const [previewUrl, setPreviewUrl] = useState(null);
 
-  const logo = '/logo.png'; // Logo do The Dump
+  const logo = '/logo.png';
 
-  const getAuthHeaders = useCallback(() => ({ 'Authorization': `Bearer ${localStorage.getItem('token')}` }), []);
+  const getAuthHeaders = useCallback(() => {
+    const token = localStorage.getItem('token');
+    return { 
+      'Authorization': `Bearer ${token}`
+    };
+  }, []);
 
   const loadDocuments = useCallback(async () => {
     try {
-      const response = await fetch(`${API_URL}/api/documents`, { headers: getAuthHeaders() });
+      const response = await fetch(`${API_URL}/api/documents`, { 
+        headers: getAuthHeaders() 
+      });
       const result = await response.json();
-      if (result.success) setDocuments(result.documents);
+      
+      if (result.success) {
+        setDocuments(result.documents);
+      } else {
+        console.error('Failed to load documents:', result.error);
+      }
     } catch (err) {
       console.error('Erro ao carregar documentos:', err);
     }
@@ -36,9 +48,14 @@ export default function TheDump() {
 
   const loadStats = useCallback(async () => {
     try {
-      const response = await fetch(`${API_URL}/api/stats`, { headers: getAuthHeaders() });
+      const response = await fetch(`${API_URL}/api/stats`, { 
+        headers: getAuthHeaders() 
+      });
       const result = await response.json();
-      if (result.success) setStats(result.stats);
+      
+      if (result.success) {
+        setStats(result.stats);
+      }
     } catch (err) {
       console.error('Erro ao carregar stats:', err);
     }
@@ -47,6 +64,7 @@ export default function TheDump() {
   useEffect(() => {
     const token = localStorage.getItem('token');
     const savedUser = localStorage.getItem('user');
+    
     if (token) {
       if (savedUser) {
         setIsAuthenticated(true);
@@ -56,8 +74,11 @@ export default function TheDump() {
       } else {
         (async () => {
           try {
-            const resp = await fetch(`${API_URL}/api/auth/me`, { headers: { 'Authorization': `Bearer ${token}` } });
+            const resp = await fetch(`${API_URL}/api/auth/me`, { 
+              headers: { 'Authorization': `Bearer ${token}` } 
+            });
             const json = await resp.json();
+            
             if (json && json.success && json.user) {
               localStorage.setItem('user', JSON.stringify(json.user));
               setUser(json.user);
@@ -67,15 +88,19 @@ export default function TheDump() {
               return;
             }
           } catch (err) {
-            // ignore and fallback to decoding token
+            console.error('Failed to fetch user:', err);
           }
 
-          // Fallback: decode JWT payload to populate minimal user
+          // Fallback: decode JWT payload
           try {
             const parts = token.split('.');
             if (parts.length >= 2) {
               const payload = JSON.parse(atob(parts[1].replace(/-/g, '+').replace(/_/g, '/')));
-              const minimalUser = { id: payload.userId || payload.sub || null, email: payload.email || null, name: payload.name || payload.email || 'Google User' };
+              const minimalUser = { 
+                id: payload.userId || payload.sub || null, 
+                email: payload.email || null, 
+                name: payload.name || payload.email || 'Google User' 
+              };
               localStorage.setItem('user', JSON.stringify(minimalUser));
               setUser(minimalUser);
               setIsAuthenticated(true);
@@ -83,7 +108,7 @@ export default function TheDump() {
               loadStats();
             }
           } catch (e) {
-            // give up
+            console.error('Failed to decode token:', e);
           }
         })();
       }
@@ -93,6 +118,7 @@ export default function TheDump() {
   useEffect(() => {
     let currentObjectUrl = null;
     let cancelled = false;
+    
     if (selectedDoc?.fileType && selectedDoc.fileType.includes('pdf') && selectedDoc.url) {
       (async () => {
         try {
@@ -119,8 +145,6 @@ export default function TheDump() {
     };
   }, [selectedDoc, getAuthHeaders]);
 
-  
-
   const handleLogout = () => {
     localStorage.removeItem('token');
     localStorage.removeItem('user');
@@ -131,336 +155,476 @@ export default function TheDump() {
 
   const handleFileUpload = async (files) => {
     const filesArray = Array.from(files);
-    setUploadQueue(filesArray.map(f => ({ name: f.name, progress: 0, status: 'uploading' })));
+    
+    // Validate file types
+    const allowedTypes = ['application/pdf', 'image/png', 'image/jpeg', 'image/jpg', 'image/tiff'];
+    const invalidFiles = filesArray.filter(f => !allowedTypes.includes(f.type));
+    
+    if (invalidFiles.length > 0) {
+      setError(`Arquivos não suportados: ${invalidFiles.map(f => f.name).join(', ')}`);
+      setTimeout(() => setError(null), 5000);
+      return;
+    }
+    
+    // Validate file size (50MB)
+    const maxSize = 50 * 1024 * 1024;
+    const oversizedFiles = filesArray.filter(f => f.size > maxSize);
+    
+    if (oversizedFiles.length > 0) {
+      setError(`Arquivos muito grandes (máx 50MB): ${oversizedFiles.map(f => f.name).join(', ')}`);
+      setTimeout(() => setError(null), 5000);
+      return;
+    }
+
+    setUploadQueue(filesArray.map(f => ({ 
+      name: f.name, 
+      progress: 0, 
+      status: 'uploading' 
+    })));
 
     const formData = new FormData();
     filesArray.forEach(file => formData.append('files', file));
 
     try {
+      console.log('Starting upload to:', `${API_URL}/api/documents/upload`);
+      console.log('Files:', filesArray.map(f => ({ name: f.name, type: f.type, size: f.size })));
+      
       const response = await fetch(`${API_URL}/api/documents/upload`, {
         method: 'POST',
         headers: getAuthHeaders(),
         body: formData
       });
+
+      console.log('Upload response status:', response.status);
       const result = await response.json();
+      console.log('Upload response:', result);
+
       if (result.success) {
-        setUploadQueue([]);
-        setShowUploadZone(false);
+        setUploadQueue(filesArray.map(f => ({ 
+          name: f.name, 
+          progress: 100, 
+          status: 'completed' 
+        })));
+        
+        setTimeout(() => {
+          setUploadQueue([]);
+          setShowUploadZone(false);
+        }, 2000);
+        
         loadDocuments();
         loadStats();
-        result.documents.forEach(doc => pollDocumentStatus(doc.id));
+        setError(null);
       } else {
-        throw new Error(result.error);
+        throw new Error(result.error || 'Upload falhou');
       }
     } catch (err) {
-      setError(err.message);
-      setUploadQueue([]);
+      console.error('Upload error:', err);
+      setUploadQueue(filesArray.map(f => ({ 
+        name: f.name, 
+        progress: 0, 
+        status: 'failed' 
+      })));
+      
+      setError(err.message || 'Erro no upload. Verifique sua conexão e tente novamente.');
+      setTimeout(() => setError(null), 5000);
     }
-  };
-
-  const pollDocumentStatus = async (docId) => {
-    let attempts = 0;
-    const poll = setInterval(async () => {
-      try {
-        const response = await fetch(`${API_URL}/api/documents/${docId}/status`, { headers: getAuthHeaders() });
-        const result = await response.json();
-        if (result.status === 'completed' || result.status === 'failed' || attempts >= 60) {
-          clearInterval(poll);
-          loadDocuments();
-          loadStats();
-        }
-        attempts++;
-      } catch (err) {
-        clearInterval(poll);
-      }
-    }, 5000);
   };
 
   const handleSearch = async () => {
     if (!searchQuery.trim()) {
       setSearchResults([]);
+      setIsSearching(false);
       return;
     }
+
     setIsSearching(true);
     try {
-      const params = new URLSearchParams({ query: searchQuery });
-      const response = await fetch(`${API_URL}/api/documents/search?${params}`, { headers: getAuthHeaders() });
+      const response = await fetch(
+        `${API_URL}/api/documents/search?query=${encodeURIComponent(searchQuery)}`,
+        { headers: getAuthHeaders() }
+      );
       const result = await response.json();
-      if (result.success) setSearchResults(result.results);
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setIsSearching(false);
-    }
-  };
-
-  const deleteDocument = async (id) => {
-    if (!window.confirm('Tem certeza que deseja excluir este documento?')) return;
-    try {
-      const response = await fetch(`${API_URL}/api/documents/${id}`, {
-        method: 'DELETE',
-        headers: getAuthHeaders()
-      });
-      const result = await response.json();
+      
       if (result.success) {
-        loadDocuments();
-        loadStats();
-        setSearchResults(prev => prev.filter(d => d.id !== id));
-        if (selectedDoc?.id === id) setSelectedDoc(null);
+        setSearchResults(result.results);
       }
     } catch (err) {
-      setError(err.message);
+      console.error('Erro na busca:', err);
+      setError('Erro ao buscar documentos');
+      setTimeout(() => setError(null), 3000);
     }
   };
 
   const viewDocument = async (docId) => {
     try {
-      const response = await fetch(`${API_URL}/api/documents/${docId}`, { headers: getAuthHeaders() });
+      const response = await fetch(`${API_URL}/api/documents/${docId}`, {
+        headers: getAuthHeaders()
+      });
       const result = await response.json();
-      if (result.success) setSelectedDoc(result.document);
+      
+      if (result.success) {
+        setSelectedDoc(result.document);
+      }
     } catch (err) {
-      setError(err.message);
+      console.error('Erro ao visualizar:', err);
+      setError('Erro ao carregar documento');
+      setTimeout(() => setError(null), 3000);
     }
   };
 
-  const getFileIcon = (type) => {
-    if (!type) return <File className="w-6 h-6" />;
-    if (type.includes('image')) return <ImageIcon className="w-6 h-6" />;
-    if (type.includes('pdf')) return <FileText className="w-6 h-6" />;
-    return <File className="w-6 h-6" />;
-  };
+  const deleteDocument = async (docId) => {
+    if (!window.confirm('Tem certeza que deseja excluir este documento?')) return;
 
-  const getStatusIcon = (status) => {
-    switch (status) {
-      case 'completed': return <CheckCircle className="w-5 h-5 text-emerald-500" />;
-      case 'processing': return <Loader className="w-5 h-5 text-blue-500 animate-spin" />;
-      case 'failed': return <AlertCircle className="w-5 h-5 text-red-500" />;
-      default: return <Loader className="w-5 h-5 text-gray-400" />;
+    try {
+      const response = await fetch(`${API_URL}/api/documents/${docId}`, {
+        method: 'DELETE',
+        headers: getAuthHeaders()
+      });
+      const result = await response.json();
+      
+      if (result.success) {
+        loadDocuments();
+        loadStats();
+        if (selectedDoc?.id === docId) {
+          setSelectedDoc(null);
+        }
+      }
+    } catch (err) {
+      console.error('Erro ao deletar:', err);
+      setError('Erro ao deletar documento');
+      setTimeout(() => setError(null), 3000);
     }
   };
 
   const formatSize = (bytes) => {
     if (!bytes) return '0 B';
-    if (bytes < 1024) return bytes + ' B';
-    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
-    return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+    const k = 1024;
+    const sizes = ['B', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return `${(bytes / Math.pow(k, i)).toFixed(1)} ${sizes[i]}`;
   };
 
   const formatDate = (date) => {
     if (!date) return '';
     return new Date(date).toLocaleDateString('pt-BR', {
-      day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit'
+      day: '2-digit',
+      month: 'short',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
     });
+  };
+
+  const getFileIcon = (fileType) => {
+    if (!fileType) return <File className="w-8 h-8 text-purple-600" />;
+    
+    if (fileType.includes('pdf')) {
+      return <FileText className="w-8 h-8 text-red-600" />;
+    }
+    if (fileType.includes('image')) {
+      return <ImageIcon className="w-8 h-8 text-blue-600" />;
+    }
+    return <File className="w-8 h-8 text-purple-600" />;
+  };
+
+  const getStatusIcon = (status) => {
+    switch (status) {
+      case 'completed':
+        return <CheckCircle className="w-4 h-4 text-green-600" />;
+      case 'processing':
+        return <Loader className="w-4 h-4 text-blue-600 animate-spin" />;
+      case 'failed':
+        return <AlertCircle className="w-4 h-4 text-red-600" />;
+      default:
+        return <Clock className="w-4 h-4 text-gray-400" />;
+    }
   };
 
   if (!isAuthenticated) {
     return (
-      <div style={{ minHeight: '100vh', background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem', position: 'relative', overflow: 'hidden' }}>
-        {/* Animated Background */}
-        <div style={{ position: 'absolute', inset: 0, background: 'radial-gradient(circle at 20% 50%, rgba(120, 119, 198, 0.3), transparent 50%), radial-gradient(circle at 80% 80%, rgba(162, 155, 254, 0.3), transparent 50%)', animation: 'pulse 4s ease-in-out infinite' }} />
-        
-        <div style={{ backgroundColor: 'white', borderRadius: '1.5rem', boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)', padding: '3rem', maxWidth: '28rem', width: '100%', position: 'relative', zIndex: 10 }}>
-          <div style={{ textAlign: 'center', marginBottom: '2rem' }}>
-            <div style={{ width: '8rem', height: '8rem', margin: '0 auto 1.5rem', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <img src={logo} alt="The Dump Logo" style={{ width: '100%', height: '100%', objectFit: 'contain', filter: 'drop-shadow(0 10px 25px rgba(102, 126, 234, 0.3))' }} />
-            </div>
-            <h1 style={{ fontSize: '2.5rem', fontWeight: '900', background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', marginBottom: '0.5rem', letterSpacing: '-0.025em' }}>THE DUMP</h1>
-            <p style={{ color: '#6b7280', fontWeight: '500', fontSize: '1rem' }}>Smart Document Repository</p>
+      <div style={{ minHeight: '100vh', background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>
+        <div style={{ background: 'white', borderRadius: '1.5rem', padding: '3rem', maxWidth: '28rem', width: '100%', boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)', textAlign: 'center' }}>
+          <div style={{ marginBottom: '2rem' }}>
+            <Database className="w-20 h-20 mx-auto text-purple-600 mb-4" />
+            <h1 style={{ fontSize: '2rem', fontWeight: '800', background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', marginBottom: '0.5rem' }}>
+              THE DUMP
+            </h1>
+            <p style={{ color: '#6b7280', fontSize: '0.95rem' }}>Sistema Inteligente de Busca de Documentos</p>
           </div>
-
-          {error && (
-            <div style={{ backgroundColor: '#fee2e2', border: '2px solid #fca5a5', color: '#991b1b', padding: '1rem', borderRadius: '0.75rem', marginBottom: '1.5rem', fontSize: '0.875rem', fontWeight: '500' }}>
-              {error}
+          
+          <button
+            onClick={() => window.location.href = `${API_URL}/auth/google`}
+            style={{
+              width: '100%',
+              padding: '1rem',
+              background: 'white',
+              border: '2px solid #e5e7eb',
+              borderRadius: '0.75rem',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '0.75rem',
+              fontSize: '1rem',
+              fontWeight: '600',
+              color: '#1f2937',
+              cursor: 'pointer',
+              transition: 'all 0.2s'
+            }}
+            onMouseOver={(e) => {
+              e.currentTarget.style.borderColor = '#667eea';
+              e.currentTarget.style.boxShadow = '0 4px 6px -1px rgba(102, 126, 234, 0.3)';
+            }}
+            onMouseOut={(e) => {
+              e.currentTarget.style.borderColor = '#e5e7eb';
+              e.currentTarget.style.boxShadow = 'none';
+            }}
+          >
+            <svg width="20" height="20" viewBox="0 0 24 24">
+              <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
+              <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+              <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/>
+              <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
+            </svg>
+            Continuar com Google
+          </button>
+          
+          <div style={{ marginTop: '2rem', padding: '1.5rem', background: 'linear-gradient(135deg, rgba(102, 126, 234, 0.1) 0%, rgba(118, 75, 162, 0.1) 100%)', borderRadius: '0.75rem' }}>
+            <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.75rem', marginBottom: '1rem' }}>
+              <Sparkles className="w-5 h-5 text-purple-600 flex-shrink-0 mt-1" />
+              <div style={{ textAlign: 'left' }}>
+                <h3 style={{ fontWeight: '700', color: '#1f2937', marginBottom: '0.25rem' }}>Upload Inteligente</h3>
+                <p style={{ fontSize: '0.875rem', color: '#6b7280' }}>PDFs e imagens com OCR automático</p>
+              </div>
             </div>
-          )}
-
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', alignItems: 'center' }}>
-            <p style={{ color: '#6b7280', marginBottom: '0.5rem' }}>Faça login usando sua conta Google</p>
-            <a href={`${API_URL}/auth/google`} style={{ display: 'inline-flex', alignItems: 'center', gap: '0.75rem', marginTop: '0.75rem', background: '#ffffff', color: '#202124', border: '1px solid rgba(0,0,0,0.08)', padding: '0.5rem 1rem', borderRadius: '0.75rem', fontWeight: 700, textDecoration: 'none' }}>
-              <svg width="18" height="18" viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg" style={{ display: 'block' }}>
-                <path fill="#EA4335" d="M24 12c3.3 0 6.2 1.2 8.4 3.1l6.2-6.2C34.7 6.1 29.7 4 24 4 14.9 4 7.3 9.6 4 17.3l7 5.4C12.6 16.1 17.8 12 24 12z"/>
-                <path fill="#34A853" d="M46.5 24c0-1.6-.1-2.8-.4-4H24v8h13.1c-.6 3-2.6 5.5-5.5 7.1l8.4 6.3C43.7 37.6 46.5 31.3 46.5 24z"/>
-                <path fill="#4A90E2" d="M11.9 29.7A14.4 14.4 0 0 1 12 24c0-1.6.3-3.1.8-4.5l-7-5.4C2.6 16.9 1 19.3 1 24c0 4.7 1.6 8.4 4.9 11.3l6-5.6z"/>
-                <path fill="#FBBC05" d="M24 44c6.1 0 11.4-2 15.2-5.5l-8.4-6.3C30.9 34.9 27.7 36 24 36c-6.2 0-11.4-4.1-13.1-9.7l-7 5.4C7.3 38.4 14.9 44 24 44z"/>
-              </svg>
-              <span>Entrar com Google</span>
-            </a>
+            <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.75rem' }}>
+              <Search className="w-5 h-5 text-purple-600 flex-shrink-0 mt-1" />
+              <div style={{ textAlign: 'left' }}>
+                <h3 style={{ fontWeight: '700', color: '#1f2937', marginBottom: '0.25rem' }}>Busca Avançada</h3>
+                <p style={{ fontSize: '0.875rem', color: '#6b7280' }}>Encontre qualquer documento rapidamente</p>
+              </div>
+            </div>
           </div>
-
-          
-
-          
         </div>
       </div>
     );
   }
 
+  const displayedDocs = isSearching && searchResults.length > 0 ? searchResults : documents;
+
   return (
-    <div style={{ minHeight: '100vh', background: 'linear-gradient(to bottom, #f8fafc, #f1f5f9)' }}>
-      {/* Header com gradiente */}
-      <header style={{ background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', borderBottom: '1px solid rgba(255,255,255,0.1)', position: 'sticky', top: 0, zIndex: 50, boxShadow: '0 10px 25px -5px rgba(102, 126, 234, 0.3)' }}>
+    <div style={{ minHeight: '100vh', background: 'linear-gradient(to bottom, #f9fafb, #f3f4f6)' }}>
+      {/* Header */}
+      <div style={{ background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)', position: 'sticky', top: 0, zIndex: 50 }}>
         <div style={{ maxWidth: '80rem', margin: '0 auto', padding: '1.25rem 1.5rem' }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '1rem' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-              <div style={{ width: '3rem', height: '3rem', background: 'white', borderRadius: '0.75rem', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0.375rem', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)' }}>
-                <img src={logo} alt="The Dump" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
-              </div>
+              <Database className="w-10 h-10 text-white" />
               <div>
-                <h1 style={{ fontSize: '1.5rem', fontWeight: '900', color: 'white', letterSpacing: '-0.025em' }}>THE DUMP</h1>
-                <p style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.8)' }}>Smart Repository</p>
+                <h1 style={{ fontSize: '1.5rem', fontWeight: '800', color: 'white' }}>THE DUMP</h1>
+                <p style={{ fontSize: '0.875rem', color: 'rgba(255,255,255,0.9)' }}>Sistema de Busca Inteligente</p>
               </div>
             </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.5rem 1rem', background: 'rgba(255,255,255,0.15)', backdropFilter: 'blur(10px)', borderRadius: '0.75rem', border: '1px solid rgba(255,255,255,0.2)' }}>
-                <User className="w-4 h-4 text-white" />
-                <span style={{ fontWeight: '600', color: 'white', fontSize: '0.875rem' }}>{user?.name}</span>
-              </div>
-              <button onClick={() => setShowUploadZone(!showUploadZone)} style={{ padding: '0.625rem 1.25rem', background: 'white', color: '#667eea', fontWeight: '700', borderRadius: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.875rem', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)', transition: 'transform 0.2s' }} onMouseOver={(e) => e.currentTarget.style.transform = 'translateY(-2px)'} onMouseOut={(e) => e.currentTarget.style.transform = 'translateY(0)'}>
-                <Upload className="w-4 h-4" /> UPLOAD
-              </button>
-              <button onClick={handleLogout} style={{ padding: '0.625rem', background: 'rgba(255,255,255,0.15)', backdropFilter: 'blur(10px)', borderRadius: '0.75rem', border: '1px solid rgba(255,255,255,0.2)' }}>
-                <LogOut className="w-4 h-4 text-white" />
+            
+            <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+              {user && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.5rem 1rem', background: 'rgba(255,255,255,0.2)', borderRadius: '0.75rem', backdropFilter: 'blur(10px)' }}>
+                  <User className="w-5 h-5 text-white" />
+                  <span style={{ color: 'white', fontWeight: '600', fontSize: '0.875rem' }}>{user.name || user.email}</span>
+                </div>
+              )}
+              <button 
+                onClick={handleLogout}
+                style={{ padding: '0.625rem 1.25rem', background: 'rgba(255,255,255,0.2)', color: 'white', fontWeight: '600', borderRadius: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.5rem', backdropFilter: 'blur(10px)', border: '1px solid rgba(255,255,255,0.3)' }}
+              >
+                <LogOut className="w-4 h-4" /> Sair
               </button>
             </div>
           </div>
         </div>
-      </header>
+      </div>
 
+      {/* Error Message */}
       {error && (
-        <div style={{ maxWidth: '80rem', margin: '0 auto', padding: '1rem 1.5rem' }}>
-          <div style={{ backgroundColor: '#fee2e2', border: '2px solid #fca5a5', color: '#991b1b', padding: '1rem 1.5rem', borderRadius: '0.75rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '0.875rem', fontWeight: '500' }}>
-            <span>{error}</span>
-            <button onClick={() => setError(null)}><X className="w-5 h-5" /></button>
+        <div style={{ maxWidth: '80rem', margin: '1rem auto', padding: '0 1.5rem' }}>
+          <div style={{ background: '#fef2f2', border: '2px solid #fecaca', borderRadius: '0.75rem', padding: '1rem', display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+            <AlertCircle className="w-5 h-5 text-red-600 flex-shrink-0" />
+            <p style={{ color: '#dc2626', fontWeight: '600' }}>{error}</p>
           </div>
         </div>
       )}
 
-      <div style={{ maxWidth: '80rem', margin: '0 auto', padding: '2rem 1.5rem' }}>
-        {/* Stats Cards com gradientes */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '1.25rem', marginBottom: '2rem' }}>
-          {[
-            { label: 'Total', value: stats.total, icon: Database, gradient: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', iconBg: 'rgba(102, 126, 234, 0.1)' },
-            { label: 'Processando', value: stats.processing, icon: Loader, gradient: 'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)', iconBg: 'rgba(245, 87, 108, 0.1)' },
-            { label: 'Concluídos', value: stats.completed, icon: CheckCircle, gradient: 'linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)', iconBg: 'rgba(0, 242, 254, 0.1)' },
-            { label: 'Falhas', value: stats.failed, icon: AlertCircle, gradient: 'linear-gradient(135deg, #fa709a 0%, #fee140 100%)', iconBg: 'rgba(250, 112, 154, 0.1)' }
-          ].map((stat, i) => (
-            <div key={i} style={{ background: 'white', borderRadius: '1.25rem', padding: '1.75rem', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)', border: '1px solid rgba(0,0,0,0.05)', transition: 'all 0.3s', position: 'relative', overflow: 'hidden' }} onMouseOver={(e) => { e.currentTarget.style.transform = 'translateY(-4px)'; e.currentTarget.style.boxShadow = '0 20px 25px -5px rgba(0, 0, 0, 0.1)'; }} onMouseOut={(e) => { e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.boxShadow = '0 4px 6px -1px rgba(0, 0, 0, 0.1)'; }}>
-              <div style={{ position: 'absolute', top: 0, right: 0, width: '150px', height: '150px', background: stat.gradient, opacity: 0.05, borderRadius: '50%', transform: 'translate(30%, -30%)' }} />
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1rem', position: 'relative' }}>
-                <span style={{ fontSize: '0.75rem', fontWeight: '700', color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{stat.label}</span>
-                <div style={{ width: '3rem', height: '3rem', background: stat.iconBg, borderRadius: '0.75rem', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  <stat.icon className="w-5 h-5" style={{ color: stat.gradient.match(/#[0-9a-f]{6}/i)[0] }} />
-                </div>
+      {/* Stats */}
+      <div style={{ maxWidth: '80rem', margin: '2rem auto', padding: '0 1.5rem' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem' }}>
+          <div style={{ background: 'white', borderRadius: '1rem', padding: '1.5rem', boxShadow: '0 1px 3px 0 rgba(0, 0, 0, 0.1)', border: '1px solid #e5e7eb' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <div>
+                <p style={{ color: '#6b7280', fontSize: '0.875rem', fontWeight: '600', marginBottom: '0.25rem' }}>Total</p>
+                <p style={{ fontSize: '2rem', fontWeight: '800', color: '#1f2937' }}>{stats.total}</p>
               </div>
-              <p style={{ fontSize: '2.5rem', fontWeight: '800', background: stat.gradient, WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', lineHeight: 1, position: 'relative' }}>{stat.value}</p>
+              <FileCheck className="w-12 h-12 text-purple-600 opacity-20" />
             </div>
-          ))}
-        </div>
-
-        {/* Upload Zone melhorado */}
-        {showUploadZone && (
-          <div style={{ background: 'white', borderRadius: '1.25rem', padding: '2rem', marginBottom: '2rem', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)', border: '1px solid rgba(0,0,0,0.05)' }}>
-            <label style={{ display: 'block', cursor: 'pointer' }}>
-              <div style={{ border: '3px dashed #e0e7ff', borderRadius: '1rem', padding: '3rem', textAlign: 'center', background: 'linear-gradient(135deg, rgba(102, 126, 234, 0.05) 0%, rgba(118, 75, 162, 0.05) 100%)', transition: 'all 0.3s' }} onMouseOver={(e) => { e.currentTarget.style.borderColor = '#667eea'; e.currentTarget.style.background = 'linear-gradient(135deg, rgba(102, 126, 234, 0.1) 0%, rgba(118, 75, 162, 0.1) 100%)'; }} onMouseOut={(e) => { e.currentTarget.style.borderColor = '#e0e7ff'; e.currentTarget.style.background = 'linear-gradient(135deg, rgba(102, 126, 234, 0.05) 0%, rgba(118, 75, 162, 0.05) 100%)'; }}>
-                <div style={{ width: '5rem', height: '5rem', background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', borderRadius: '1rem', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 1.5rem', boxShadow: '0 10px 25px -5px rgba(102, 126, 234, 0.4)' }}>
-                  <Upload className="w-8 h-8 text-white" />
-                </div>
-                <h3 style={{ fontSize: '1.5rem', fontWeight: '700', color: '#1f2937', marginBottom: '0.5rem' }}>Arraste seus documentos aqui</h3>
-                <p style={{ color: '#6b7280', fontSize: '1rem' }}>ou clique para selecionar arquivos</p>
-                <p style={{ color: '#9ca3af', fontSize: '0.875rem', marginTop: '0.5rem' }}>PDF, PNG, JPG, TIFF • Máx 50MB</p>
+          </div>
+          
+          <div style={{ background: 'white', borderRadius: '1rem', padding: '1.5rem', boxShadow: '0 1px 3px 0 rgba(0, 0, 0, 0.1)', border: '1px solid #e5e7eb' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <div>
+                <p style={{ color: '#6b7280', fontSize: '0.875rem', fontWeight: '600', marginBottom: '0.25rem' }}>Processando</p>
+                <p style={{ fontSize: '2rem', fontWeight: '800', color: '#3b82f6' }}>{stats.processing}</p>
               </div>
-              <input type="file" multiple onChange={(e) => handleFileUpload(e.target.files)} style={{ display: 'none' }} accept="image/*,.pdf" />
-            </label>
-            {uploadQueue.length > 0 && (
-              <div style={{ marginTop: '1.5rem', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-                {uploadQueue.map((file, i) => (
-                  <div key={i} style={{ background: 'linear-gradient(135deg, rgba(102, 126, 234, 0.05) 0%, rgba(118, 75, 162, 0.05) 100%)', borderRadius: '0.75rem', padding: '1rem', display: 'flex', alignItems: 'center', gap: '1rem', border: '1px solid rgba(102, 126, 234, 0.2)' }}>
-                    <Loader className="w-5 h-5 text-blue-500 animate-spin" />
-                    <span style={{ fontWeight: '600', color: '#1f2937', flex: 1 }}>{file.name}</span>
-                    <span style={{ fontSize: '0.875rem', color: '#6b7280' }}>Enviando...</span>
+              <Loader className="w-12 h-12 text-blue-600 opacity-20 animate-spin" />
+            </div>
+          </div>
+          
+          <div style={{ background: 'white', borderRadius: '1rem', padding: '1.5rem', boxShadow: '0 1px 3px 0 rgba(0, 0, 0, 0.1)', border: '1px solid #e5e7eb' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <div>
+                <p style={{ color: '#6b7280', fontSize: '0.875rem', fontWeight: '600', marginBottom: '0.25rem' }}>Completos</p>
+                <p style={{ fontSize: '2rem', fontWeight: '800', color: '#10b981' }}>{stats.completed}</p>
+              </div>
+              <CheckCircle className="w-12 h-12 text-green-600 opacity-20" />
+            </div>
+          </div>
+          
+          <div style={{ background: 'white', borderRadius: '1rem', padding: '1.5rem', boxShadow: '0 1px 3px 0 rgba(0, 0, 0, 0.1)', border: '1px solid #e5e7eb' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <div>
+                <p style={{ color: '#6b7280', fontSize: '0.875rem', fontWeight: '600', marginBottom: '0.25rem' }}>Armazenamento</p>
+                <p style={{ fontSize: '2rem', fontWeight: '800', color: '#8b5cf6' }}>{formatSize(stats.totalSize)}</p>
+              </div>
+              <Database className="w-12 h-12 text-purple-600 opacity-20" />
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Main Content */}
+      <div style={{ maxWidth: '80rem', margin: '0 auto', padding: '0 1.5rem 3rem' }}>
+        <div style={{ background: 'white', borderRadius: '1.5rem', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)', padding: '2rem', border: '1px solid #e5e7eb' }}>
+          {/* Upload & Search */}
+          <div style={{ display: 'grid', gridTemplateColumns: showUploadZone ? '1fr' : 'repeat(auto-fit, minmax(280px, 1fr))', gap: '1rem', marginBottom: '2rem' }}>
+            {!showUploadZone && (
+              <>
+                <button
+                  onClick={() => setShowUploadZone(true)}
+                  style={{ padding: '1.25rem', background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', color: 'white', fontWeight: '700', borderRadius: '1rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.75rem', fontSize: '1rem', boxShadow: '0 4px 6px -1px rgba(102, 126, 234, 0.5)' }}
+                >
+                  <Upload className="w-5 h-5" /> Upload de Documentos
+                </button>
+                
+                <div style={{ display: 'flex', gap: '0.5rem' }}>
+                  <input
+                    type="text"
+                    placeholder="Buscar em todos os documentos..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    onKeyPress={(e) => e.key === 'Enter' && handleSearch()}
+                    style={{ flex: 1, padding: '1rem 1.25rem', border: '2px solid #e5e7eb', borderRadius: '1rem', fontSize: '0.95rem' }}
+                  />
+                  <button
+                    onClick={handleSearch}
+                    style={{ padding: '1rem 1.5rem', background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', color: 'white', fontWeight: '700', borderRadius: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}
+                  >
+                    <Search className="w-5 h-5" /> Buscar
+                  </button>
+                </div>
+              </>
+            )}
+            
+            {showUploadZone && (
+              <div>
+                <div
+                  onDragOver={(e) => e.preventDefault()}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    handleFileUpload(e.dataTransfer.files);
+                  }}
+                  style={{ border: '3px dashed #d1d5db', borderRadius: '1rem', padding: '3rem', textAlign: 'center', background: 'linear-gradient(135deg, rgba(102, 126, 234, 0.05) 0%, rgba(118, 75, 162, 0.05) 100%)', position: 'relative' }}
+                >
+                  <input
+                    type="file"
+                    multiple
+                    accept=".pdf,.png,.jpg,.jpeg,.tiff"
+                    onChange={(e) => handleFileUpload(e.target.files)}
+                    style={{ position: 'absolute', inset: 0, opacity: 0, cursor: 'pointer' }}
+                    id="file-upload"
+                  />
+                  <label htmlFor="file-upload" style={{ cursor: 'pointer' }}>
+                    <Upload className="w-16 h-16 mx-auto text-purple-600 mb-4" />
+                    <p style={{ fontSize: '1.25rem', fontWeight: '700', color: '#1f2937', marginBottom: '0.5rem' }}>
+                      Arraste arquivos ou clique para selecionar
+                    </p>
+                    <p style={{ color: '#6b7280', fontSize: '0.875rem' }}>
+                      Suporta PDF, PNG, JPG, TIFF (máx. 50MB por arquivo)
+                    </p>
+                  </label>
+                </div>
+                
+                {uploadQueue.length > 0 && (
+                  <div style={{ marginTop: '1.5rem', space: '0.75rem' }}>
+                    {uploadQueue.map((item, idx) => (
+                      <div key={idx} style={{ padding: '1rem', background: '#f9fafb', borderRadius: '0.75rem', marginBottom: '0.75rem' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
+                          <span style={{ fontWeight: '600', color: '#1f2937', fontSize: '0.875rem' }}>{item.name}</span>
+                          {getStatusIcon(item.status)}
+                        </div>
+                        <div style={{ width: '100%', height: '0.5rem', background: '#e5e7eb', borderRadius: '9999px', overflow: 'hidden' }}>
+                          <div style={{ width: `${item.progress}%`, height: '100%', background: 'linear-gradient(to right, #667eea, #764ba2)', transition: 'width 0.3s' }} />
+                        </div>
+                      </div>
+                    ))}
                   </div>
-                ))}
+                )}
+                
+                <button
+                  onClick={() => setShowUploadZone(false)}
+                  style={{ marginTop: '1rem', width: '100%', padding: '0.75rem', background: '#f3f4f6', color: '#6b7280', fontWeight: '600', borderRadius: '0.75rem' }}
+                >
+                  Cancelar
+                </button>
               </div>
             )}
           </div>
-        )}
 
-        {/* Search com visual melhorado */}
-        <div style={{ background: 'white', borderRadius: '1.25rem', padding: '1.75rem', marginBottom: '2rem', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)', border: '1px solid rgba(0,0,0,0.05)' }}>
-          <div style={{ display: 'flex', gap: '1rem', marginBottom: '1rem' }}>
-            <div style={{ flex: 1, position: 'relative' }}>
-              <Search style={{ position: 'absolute', left: '1rem', top: '50%', transform: 'translateY(-50%)', color: '#9ca3af', width: '1.25rem', height: '1.25rem' }} />
-              <input type="text" placeholder="Pesquisar documentos..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} onKeyPress={(e) => e.key === 'Enter' && handleSearch()} style={{ width: '100%', paddingLeft: '3rem', paddingRight: '1rem', paddingTop: '0.875rem', paddingBottom: '0.875rem', background: '#f9fafb', border: '2px solid #e5e7eb', borderRadius: '0.75rem', fontSize: '1rem', transition: 'all 0.2s' }} onFocus={(e) => { e.target.style.borderColor = '#667eea'; e.target.style.background = 'white'; }} onBlur={(e) => { e.target.style.borderColor = '#e5e7eb'; e.target.style.background = '#f9fafb'; }} />
-            </div>
-            <button onClick={handleSearch} disabled={isSearching} style={{ padding: '0.875rem 1.75rem', background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', color: 'white', fontWeight: '700', borderRadius: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.5rem', boxShadow: '0 4px 6px -1px rgba(102, 126, 234, 0.4)', transition: 'transform 0.2s' }} onMouseOver={(e) => e.currentTarget.style.transform = 'translateY(-2px)'} onMouseOut={(e) => e.currentTarget.style.transform = 'translateY(0)'}>
-              {isSearching ? <Loader className="w-5 h-5 animate-spin" /> : <Search className="w-5 h-5" />}
-              {!isSearching && 'Pesquisar'}
-            </button>
-          </div>
-          {searchResults.length > 0 && (
-            <div style={{ marginTop: '1.5rem', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
-                <Sparkles className="w-4 h-4 text-purple-500" />
-                <h3 style={{ fontWeight: '700', color: '#1f2937', fontSize: '1rem' }}>Resultados da Pesquisa ({searchResults.length})</h3>
-              </div>
-              {searchResults.map((doc) => (
-                <div key={doc.id} style={{ background: 'linear-gradient(135deg, rgba(102, 126, 234, 0.03) 0%, rgba(118, 75, 162, 0.03) 100%)', borderRadius: '0.75rem', padding: '1.25rem', display: 'flex', alignItems: 'start', justifyContent: 'space-between', border: '1px solid rgba(102, 126, 234, 0.1)', transition: 'all 0.2s' }} onMouseOver={(e) => e.currentTarget.style.borderColor = 'rgba(102, 126, 234, 0.3)'} onMouseOut={(e) => e.currentTarget.style.borderColor = 'rgba(102, 126, 234, 0.1)'}>
-                  <div style={{ display: 'flex', alignItems: 'start', gap: '1rem', flex: 1 }}>
-                    <div style={{ width: '3.5rem', height: '3.5rem', background: 'linear-gradient(135deg, #dbeafe 0%, #e9d5ff 100%)', borderRadius: '0.75rem', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                      {getFileIcon(doc.fileType)}
-                    </div>
-                    <div style={{ flex: 1 }}>
-                      <h4 style={{ fontWeight: '700', color: '#1f2937', marginBottom: '0.375rem', fontSize: '1rem' }}>{doc.fileName}</h4>
-                      <p style={{ fontSize: '0.875rem', color: '#6b7280', marginBottom: '0.5rem', lineHeight: 1.5 }}>{doc.snippet}</p>
-                      <div style={{ display: 'flex', gap: '1rem', fontSize: '0.75rem', color: '#9ca3af' }}>
-                        <span>{formatSize(doc.fileSize)}</span>
-                        <span>•</span>
-                        <span>{formatDate(doc.uploadDate)}</span>
-                      </div>
-                    </div>
-                  </div>
-                  <button onClick={() => viewDocument(doc.id)} style={{ padding: '0.625rem 1.25rem', background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', color: 'white', fontWeight: '600', borderRadius: '0.5rem', fontSize: '0.875rem', display: 'flex', alignItems: 'center', gap: '0.375rem', flexShrink: 0 }}>
-                    <Eye className="w-4 h-4" /> Ver
-                  </button>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-
-        {/* Documents grid melhorado */}
-        <div style={{ background: 'white', borderRadius: '1.25rem', padding: '1.75rem', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)', border: '1px solid rgba(0,0,0,0.05)' }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1.5rem' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-              <FileCheck className="w-5 h-5 text-purple-500" />
-              <h2 style={{ fontSize: '1.375rem', fontWeight: '800', color: '#1f2937' }}>Meus Documentos</h2>
-            </div>
+          {/* View Mode Toggle */}
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1.5rem', paddingBottom: '1rem', borderBottom: '2px solid #f3f4f6' }}>
+            <h2 style={{ fontSize: '1.25rem', fontWeight: '800', color: '#1f2937' }}>
+              {isSearching && searchResults.length > 0 ? `Resultados da Busca (${searchResults.length})` : `Meus Documentos (${documents.length})`}
+            </h2>
             <div style={{ display: 'flex', gap: '0.5rem' }}>
-              <button onClick={() => setViewMode('grid')} style={{ padding: '0.5rem', borderRadius: '0.5rem', background: viewMode === 'grid' ? 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' : '#f3f4f6', transition: 'all 0.2s' }}>
-                <Grid className="w-5 h-5" style={{ color: viewMode === 'grid' ? 'white' : '#6b7280' }} />
+              <button
+                onClick={() => setViewMode('grid')}
+                style={{ padding: '0.5rem', background: viewMode === 'grid' ? 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' : '#f3f4f6', color: viewMode === 'grid' ? 'white' : '#6b7280', borderRadius: '0.5rem' }}
+              >
+                <Grid className="w-5 h-5" />
               </button>
-              <button onClick={() => setViewMode('list')} style={{ padding: '0.5rem', borderRadius: '0.5rem', background: viewMode === 'list' ? 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' : '#f3f4f6', transition: 'all 0.2s' }}>
-                <List className="w-5 h-5" style={{ color: viewMode === 'list' ? 'white' : '#6b7280' }} />
+              <button
+                onClick={() => setViewMode('list')}
+                style={{ padding: '0.5rem', background: viewMode === 'list' ? 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' : '#f3f4f6', color: viewMode === 'list' ? 'white' : '#6b7280', borderRadius: '0.5rem' }}
+              >
+                <List className="w-5 h-5" />
               </button>
             </div>
           </div>
 
-          {documents.length === 0 ? (
-            <div style={{ textAlign: 'center', padding: '5rem 1rem' }}>
-              <div style={{ width: '6rem', height: '6rem', background: 'linear-gradient(135deg, rgba(102, 126, 234, 0.1) 0%, rgba(118, 75, 162, 0.1) 100%)', borderRadius: '1.5rem', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 1.5rem' }}>
-                <Database className="w-10 h-10 text-gray-300" />
-              </div>
-              <h3 style={{ fontSize: '1.25rem', fontWeight: '700', color: '#6b7280', marginBottom: '0.5rem' }}>Nenhum documento ainda</h3>
-              <p style={{ color: '#9ca3af' }}>Faça upload de seus primeiros documentos</p>
+          {/* Documents Grid/List */}
+          {displayedDocs.length === 0 ? (
+            <div style={{ textAlign: 'center', padding: '4rem 2rem' }}>
+              <Database className="w-20 h-20 mx-auto text-gray-300 mb-4" />
+              <p style={{ fontSize: '1.125rem', fontWeight: '600', color: '#9ca3af', marginBottom: '0.5rem' }}>
+                {isSearching ? 'Nenhum resultado encontrado' : 'Nenhum documento ainda'}
+              </p>
+              <p style={{ color: '#d1d5db', fontSize: '0.875rem' }}>
+                {isSearching ? 'Tente outra busca' : 'Faça upload do seu primeiro documento'}
+              </p>
             </div>
           ) : (
-            <div style={{ display: 'grid', gridTemplateColumns: viewMode === 'grid' ? 'repeat(auto-fill, minmax(280px, 1fr))' : '1fr', gap: '1.25rem' }}>
-              {documents.map((doc) => (
-                <div key={doc.id} style={{ background: 'linear-gradient(135deg, rgba(102, 126, 234, 0.02) 0%, rgba(118, 75, 162, 0.02) 100%)', borderRadius: '1rem', padding: '1.25rem', border: '1px solid rgba(0,0,0,0.05)', transition: 'all 0.3s' }} onMouseOver={(e) => { e.currentTarget.style.transform = 'translateY(-4px)'; e.currentTarget.style.boxShadow = '0 10px 25px -5px rgba(102, 126, 234, 0.2)'; e.currentTarget.style.borderColor = 'rgba(102, 126, 234, 0.3)'; }} onMouseOut={(e) => { e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.boxShadow = 'none'; e.currentTarget.style.borderColor = 'rgba(0,0,0,0.05)'; }}>
+            <div style={{ display: 'grid', gridTemplateColumns: viewMode === 'grid' ? 'repeat(auto-fill, minmax(280px, 1fr))' : '1fr', gap: '1rem' }}>
+              {displayedDocs.map(doc => (
+                <div key={doc.id} style={{ background: viewMode === 'grid' ? 'linear-gradient(135deg, rgba(102, 126, 234, 0.05) 0%, rgba(118, 75, 162, 0.05) 100%)' : 'white', border: '2px solid #f3f4f6', borderRadius: '1rem', padding: '1.5rem', transition: 'all 0.2s', cursor: 'pointer' }}>
                   {viewMode === 'grid' ? (
                     <>
-                      <div style={{ width: '100%', height: '10rem', background: 'linear-gradient(135deg, #dbeafe 0%, #e9d5ff 100%)', borderRadius: '0.75rem', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '1rem', position: 'relative', overflow: 'hidden' }}>
-                        <div style={{ position: 'absolute', inset: 0, background: 'radial-gradient(circle at 30% 30%, rgba(255,255,255,0.8), transparent 70%)', pointerEvents: 'none' }} />
+                      <div style={{ width: '4rem', height: '4rem', background: 'linear-gradient(135deg, #dbeafe 0%, #e9d5ff 100%)', borderRadius: '0.75rem', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '1rem' }}>
                         {getFileIcon(doc.fileType)}
                       </div>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.75rem' }}>
@@ -519,7 +683,7 @@ export default function TheDump() {
         </div>
       </div>
 
-      {/* Modal melhorado */}
+      {/* Modal */}
       {selectedDoc && (
         <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0, 0, 0, 0.75)', backdropFilter: 'blur(8px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100, padding: '1rem', animation: 'fadeIn 0.2s ease' }}>
           <div style={{ backgroundColor: 'white', borderRadius: '1.5rem', maxWidth: '56rem', width: '100%', maxHeight: '90vh', overflow: 'auto', boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)' }}>

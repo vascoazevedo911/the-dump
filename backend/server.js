@@ -30,13 +30,29 @@ cloudinary.config({
 
 console.log('✅ Cloudinary configurado:', process.env.CLOUDINARY_CLOUD_NAME);
 
-// Configuração
+// CORS Configuration - FIXED
+const allowedOrigins = process.env.ALLOWED_ORIGINS 
+  ? process.env.ALLOWED_ORIGINS.split(',') 
+  : ['https://the-dump-gamma.vercel.app', 'http://localhost:3000'];
+
 app.use(cors({ 
-  origin: process.env.ALLOWED_ORIGINS || 'https://the-dump-gamma.vercel.app',
+  origin: function (origin, callback) {
+    // Allow requests with no origin (mobile apps, curl, etc)
+    if (!origin) return callback(null, true);
+    if (allowedOrigins.indexOf(origin) !== -1) {
+      callback(null, true);
+    } else {
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
   credentials: true,
-  methods : ['GET', 'POST', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization'] 
+  methods: ['GET', 'POST', 'DELETE', 'PUT', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization']
 }));
+
+// Handle preflight
+app.options('*', cors());
+
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
@@ -85,7 +101,7 @@ const pool = new Pool({
   ssl: process.env.DB_SSL === 'true' ? { 
     rejectUnauthorized: false,
     require: true
-    } : false,
+  } : false,
   family: 4
 });
 
@@ -94,7 +110,7 @@ pool.query('SELECT NOW()', (err, res) => {
   else console.log('✅ PostgreSQL conectado');
 });
 
-// ✅ Cloudinary Storage (substituindo file system)
+// ✅ Cloudinary Storage - IMPROVED ERROR HANDLING
 const storage = new CloudinaryStorage({
   cloudinary: cloudinary,
   params: async (req, file) => {
@@ -116,51 +132,106 @@ const storage = new CloudinaryStorage({
 
 const upload = multer({
   storage: storage,
-  limits: { fileSize: 50 * 1024 * 1024, files: 10 },
+  limits: { 
+    fileSize: 50 * 1024 * 1024, // 50MB
+    files: 10 
+  },
   fileFilter: (req, file, cb) => {
     const allowed = ['application/pdf', 'image/png', 'image/jpeg', 'image/jpg', 'image/tiff'];
-    allowed.includes(file.mimetype) ? cb(null, true) : cb(new Error('Tipo não suportado'));
+    if (allowed.includes(file.mimetype)) {
+      cb(null, true);
+    } else {
+      cb(new Error(`Tipo de arquivo não suportado: ${file.mimetype}`));
+    }
   }
 });
 
 // Middleware Autenticação
 const authenticateToken = async (req, res, next) => {
-  const token = req.headers['authorization']?.split(' ')[1];
-  if (!token) return res.status(401).json({ success: false, error: 'Token necessário' });
+  const authHeader = req.headers['authorization'];
+  const token = authHeader && authHeader.split(' ')[1];
+  
+  if (!token) {
+    return res.status(401).json({ success: false, error: 'Token necessário' });
+  }
 
   try {
     const decoded = jwt.verify(token, process.env.JWT_SECRET || 'secret-key');
     const result = await pool.query('SELECT id, email, name FROM users WHERE id = $1', [decoded.userId]);
-    if (result.rows.length === 0) return res.status(401).json({ success: false, error: 'Usuário não encontrado' });
+    
+    if (result.rows.length === 0) {
+      return res.status(401).json({ success: false, error: 'Usuário não encontrado' });
+    }
+    
     req.user = result.rows[0];
     next();
   } catch (error) {
-    return res.status(403).json({ success: false, error: 'Token inválido' });
+    console.error('Token verification error:', error);
+    return res.status(403).json({ success: false, error: 'Token inválido ou expirado' });
   }
 };
 
 // ROTAS - Autenticação
-// Google OAuth routes
 app.get('/auth/google', passport.authenticate('google', { scope: ['profile', 'email'] }));
 
-app.get('/auth/google/callback', passport.authenticate('google', { session: false, failureRedirect: `${process.env.FRONTEND_URL || 'https://the-dump-gamma.vercel.app'}/login` }), (req, res) => {
-  const user = req.user;
-  const token = jwt.sign({ userId: user.id, email: user.email }, process.env.JWT_SECRET || 'secret-key', { expiresIn: '7d' });
-  const redirectUrl = `${process.env.FRONTEND_URL || 'https://the-dump-gamma.vercel.app'}/auth-success?token=${token}`;
-  res.redirect(redirectUrl);
-});
+app.get('/auth/google/callback', 
+  passport.authenticate('google', { session: false, failureRedirect: `${process.env.FRONTEND_URL || 'https://the-dump-gamma.vercel.app'}/login` }), 
+  (req, res) => {
+    const user = req.user;
+    const token = jwt.sign({ userId: user.id, email: user.email }, process.env.JWT_SECRET || 'secret-key', { expiresIn: '7d' });
+    const redirectUrl = `${process.env.FRONTEND_URL || 'https://the-dump-gamma.vercel.app'}/auth-success?token=${token}`;
+    res.redirect(redirectUrl);
+  }
+);
+
 app.post('/api/auth/register', async (req, res) => {
-  // Local registration disabled — use Google OAuth
   res.status(403).json({ success: false, error: 'Registro local desabilitado. Use o login com Google.' });
 });
 
 app.post('/api/auth/login', async (req, res) => {
-  // Local login disabled — use Google OAuth
   res.status(403).json({ success: false, error: 'Login local desabilitado. Use o login com Google.' });
 });
 
-// ROTAS - Upload (✅ Modificado para Cloudinary)
-app.post('/api/documents/upload', authenticateToken, upload.array('files', 10), async (req, res) => {
+// ROTAS - Upload - IMPROVED ERROR HANDLING
+app.post('/api/documents/upload', authenticateToken, (req, res, next) => {
+  upload.array('files', 10)(req, res, function (err) {
+    if (err instanceof multer.MulterError) {
+      console.error('Multer error:', err);
+      if (err.code === 'LIMIT_FILE_SIZE') {
+        return res.status(400).json({ 
+          success: false, 
+          error: 'Arquivo muito grande. Tamanho máximo: 50MB' 
+        });
+      }
+      if (err.code === 'LIMIT_FILE_COUNT') {
+        return res.status(400).json({ 
+          success: false, 
+          error: 'Muitos arquivos. Máximo: 10 arquivos por vez' 
+        });
+      }
+      return res.status(400).json({ 
+        success: false, 
+        error: `Erro no upload: ${err.message}` 
+      });
+    } else if (err) {
+      console.error('Upload error:', err);
+      return res.status(400).json({ 
+        success: false, 
+        error: err.message || 'Erro no upload do arquivo' 
+      });
+    }
+    
+    // Check if files were uploaded
+    if (!req.files || req.files.length === 0) {
+      return res.status(400).json({ 
+        success: false, 
+        error: 'Nenhum arquivo foi enviado' 
+      });
+    }
+    
+    next();
+  });
+}, async (req, res) => {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
@@ -186,13 +257,22 @@ app.post('/api/documents/upload', authenticateToken, upload.array('files', 10), 
     res.json({
       success: true,
       documents: uploadedDocs.map(doc => ({
-        id: doc.id, fileName: doc.file_name, fileType: doc.file_type,
-        fileSize: doc.file_size, status: doc.status, uploadDate: doc.created_at, url: doc.file_url
+        id: doc.id, 
+        fileName: doc.file_name, 
+        fileType: doc.file_type,
+        fileSize: doc.file_size, 
+        status: doc.status, 
+        uploadDate: doc.created_at, 
+        url: doc.file_url
       }))
     });
   } catch (error) {
     await client.query('ROLLBACK');
-    res.status(500).json({ success: false, error: 'Erro no upload' });
+    console.error('Database error during upload:', error);
+    res.status(500).json({ 
+      success: false, 
+      error: 'Erro ao salvar no banco de dados' 
+    });
   } finally {
     client.release();
   }
@@ -207,39 +287,35 @@ async function processDocumentAsync(documentId, fileUrl, mimeType) {
     let ocrText = '';
     let confidence = 0;
 
-    if (mimeType.includes('image')) {
-      // ✅ Tesseract aceita URLs diretamente
-      const result = await Tesseract.recognize(fileUrl, process.env.OCR_LANGUAGE || 'por');
+    if (mimeType === 'application/pdf') {
+      const response = await axios.get(fileUrl, { responseType: 'arraybuffer' });
+      const pdfBuffer = Buffer.from(response.data);
+      const pdfData = await pdfParse(pdfBuffer);
+      ocrText = pdfData.text;
+      confidence = 95;
+    } else if (mimeType.startsWith('image/')) {
+      const result = await Tesseract.recognize(fileUrl, 'por', { logger: m => console.log(m) });
       ocrText = result.data.text;
       confidence = result.data.confidence;
-    } else if (mimeType.includes('pdf')) {
-      // ✅ Baixar PDF do Cloudinary
-      const response = await axios.get(fileUrl, { responseType: 'arraybuffer' });
-      const pdfData = await pdfParse(response.data);
-      ocrText = pdfData.text;
-      confidence = pdfData.text.length > 0 ? 95 : 0;
     }
 
-    await client.query('UPDATE documents SET ocr_text = $1, ocr_confidence = $2 WHERE id = $3', [ocrText, confidence, documentId]);
-
-    if (ocrText) {
-      await client.query(
-        'UPDATE documents SET search_vector = to_tsvector(\'portuguese\', $1 || \' \' || file_name) WHERE id = $2',
-        [ocrText, documentId]
-      );
-    }
-
-    await client.query('UPDATE documents SET status = $1, processing_completed_at = NOW() WHERE id = $2', ['completed', documentId]);
-    console.log('✅ OCR concluído:', documentId);
+    await client.query(
+      'UPDATE documents SET status = $1, ocr_text = $2, ocr_confidence = $3, processing_completed_at = NOW() WHERE id = $4',
+      ['completed', ocrText, confidence, documentId]
+    );
+    console.log(`✅ Documento ${documentId} processado com sucesso`);
   } catch (error) {
-    console.error('❌ Erro no OCR:', error);
-    await client.query('UPDATE documents SET status = $1, error_message = $2 WHERE id = $3', ['failed', error.message, documentId]);
+    console.error(`❌ Erro ao processar documento ${documentId}:`, error);
+    await client.query(
+      'UPDATE documents SET status = $1, error_message = $2 WHERE id = $3',
+      ['failed', error.message, documentId]
+    );
   } finally {
     client.release();
   }
 }
 
-// ROTAS - Pesquisa
+// ROTAS - Busca
 app.get('/api/documents/search', authenticateToken, async (req, res) => {
   try {
     const { query, dateFrom, dateTo, fileType, page = 1, size = 10 } = req.query;
@@ -266,17 +342,26 @@ app.get('/api/documents/search', authenticateToken, async (req, res) => {
     const countResult = await pool.query('SELECT COUNT(*) FROM documents WHERE user_id = $1 AND status = \'completed\'', [req.user.id]);
 
     const results = result.rows.map(doc => ({
-      id: doc.id, fileName: doc.file_name, fileType: doc.file_type, fileSize: doc.file_size,
-      uploadDate: doc.created_at, score: doc.relevance || 0,
+      id: doc.id, 
+      fileName: doc.file_name, 
+      fileType: doc.file_type, 
+      fileSize: doc.file_size,
+      uploadDate: doc.created_at, 
+      score: doc.relevance || 0,
       snippet: doc.ocr_text ? doc.ocr_text.substring(0, 150) + '...' : 'Sem conteúdo',
       url: doc.file_url
     }));
 
     res.json({
-      success: true, total: parseInt(countResult.rows[0].count), page: parseInt(page),
-      size: parseInt(size), totalPages: Math.ceil(parseInt(countResult.rows[0].count) / parseInt(size)), results
+      success: true, 
+      total: parseInt(countResult.rows[0].count), 
+      page: parseInt(page),
+      size: parseInt(size), 
+      totalPages: Math.ceil(parseInt(countResult.rows[0].count) / parseInt(size)), 
+      results
     });
   } catch (error) {
+    console.error('Search error:', error);
     res.status(500).json({ success: false, error: 'Erro na pesquisa' });
   }
 });
@@ -296,14 +381,22 @@ app.get('/api/documents', authenticateToken, async (req, res) => {
     const countResult = await pool.query('SELECT COUNT(*) FROM documents WHERE user_id = $1', [req.user.id]);
 
     res.json({
-      success: true, total: parseInt(countResult.rows[0].count),
+      success: true, 
+      total: parseInt(countResult.rows[0].count),
       documents: result.rows.map(doc => ({
-        id: doc.id, fileName: doc.file_name, fileType: doc.file_type, fileSize: doc.file_size,
-        url: doc.file_url, status: doc.status, uploadDate: doc.created_at,
-        processedDate: doc.processing_completed_at, hasOcr: !!doc.ocr_text
+        id: doc.id, 
+        fileName: doc.file_name, 
+        fileType: doc.file_type, 
+        fileSize: doc.file_size,
+        url: doc.file_url, 
+        status: doc.status, 
+        uploadDate: doc.created_at,
+        processedDate: doc.processing_completed_at, 
+        hasOcr: !!doc.ocr_text
       }))
     });
   } catch (error) {
+    console.error('List documents error:', error);
     res.status(500).json({ success: false, error: 'Erro ao listar documentos' });
   }
 });
@@ -311,28 +404,40 @@ app.get('/api/documents', authenticateToken, async (req, res) => {
 app.get('/api/documents/:id', authenticateToken, async (req, res) => {
   try {
     const result = await pool.query('SELECT * FROM documents WHERE id = $1 AND user_id = $2', [req.params.id, req.user.id]);
-    if (result.rows.length === 0) return res.status(404).json({ success: false, error: 'Documento não encontrado' });
+    if (result.rows.length === 0) {
+      return res.status(404).json({ success: false, error: 'Documento não encontrado' });
+    }
 
     const doc = result.rows[0];
     res.json({
-      success: true, document: {
-        id: doc.id, fileName: doc.file_name, fileType: doc.file_type, fileSize: doc.file_size,
-        url: doc.file_url, status: doc.status, ocrText: doc.ocr_text, ocrConfidence: doc.ocr_confidence,
-        uploadDate: doc.created_at, processingStarted: doc.processing_started_at,
-        processingCompleted: doc.processing_completed_at, error: doc.error_message
+      success: true, 
+      document: {
+        id: doc.id, 
+        fileName: doc.file_name, 
+        fileType: doc.file_type, 
+        fileSize: doc.file_size,
+        url: doc.file_url, 
+        status: doc.status, 
+        ocrText: doc.ocr_text, 
+        ocrConfidence: doc.ocr_confidence,
+        uploadDate: doc.created_at, 
+        processingStarted: doc.processing_started_at,
+        processingCompleted: doc.processing_completed_at, 
+        error: doc.error_message
       }
     });
   } catch (error) {
+    console.error('Get document error:', error);
     res.status(500).json({ success: false, error: 'Erro ao obter documento' });
   }
 });
 
-// ✅ Delete modificado para remover do Cloudinary
 app.delete('/api/documents/:id', authenticateToken, async (req, res) => {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
     const docResult = await client.query('SELECT file_path, file_url FROM documents WHERE id = $1 AND user_id = $2', [req.params.id, req.user.id]);
+    
     if (docResult.rows.length === 0) {
       await client.query('ROLLBACK');
       return res.status(404).json({ success: false, error: 'Documento não encontrado' });
@@ -363,6 +468,7 @@ app.delete('/api/documents/:id', authenticateToken, async (req, res) => {
     res.json({ success: true, message: 'Documento deletado' });
   } catch (error) {
     await client.query('ROLLBACK');
+    console.error('Delete error:', error);
     res.status(500).json({ success: false, error: 'Erro ao deletar' });
   } finally {
     client.release();
@@ -375,9 +481,14 @@ app.get('/api/documents/:id/status', authenticateToken, async (req, res) => {
       'SELECT status, processing_started_at, processing_completed_at, error_message, retry_count FROM documents WHERE id = $1 AND user_id = $2',
       [req.params.id, req.user.id]
     );
-    if (result.rows.length === 0) return res.status(404).json({ success: false, error: 'Documento não encontrado' });
+    
+    if (result.rows.length === 0) {
+      return res.status(404).json({ success: false, error: 'Documento não encontrado' });
+    }
+    
     res.json({ success: true, ...result.rows[0] });
   } catch (error) {
+    console.error('Status check error:', error);
     res.status(500).json({ success: false, error: 'Erro ao obter status' });
   }
 });
@@ -395,42 +506,58 @@ app.get('/api/stats', authenticateToken, async (req, res) => {
     );
 
     res.json({
-      success: true, stats: {
-        total: parseInt(result.rows[0].total), processing: parseInt(result.rows[0].processing),
-        completed: parseInt(result.rows[0].completed), failed: parseInt(result.rows[0].failed),
+      success: true, 
+      stats: {
+        total: parseInt(result.rows[0].total), 
+        processing: parseInt(result.rows[0].processing),
+        completed: parseInt(result.rows[0].completed), 
+        failed: parseInt(result.rows[0].failed),
         totalSize: parseInt(result.rows[0].total_size || 0)
       }
     });
   } catch (error) {
+    console.error('Stats error:', error);
     res.status(500).json({ success: false, error: 'Erro ao obter estatísticas' });
   }
 });
 
-// Return current authenticated user info
 app.get('/api/auth/me', authenticateToken, async (req, res) => {
   try {
     res.json({ success: true, user: req.user });
   } catch (err) {
+    console.error('Get user error:', err);
     res.status(500).json({ success: false, error: 'Erro ao obter usuário' });
   }
 });
 
 app.get('/health', async (req, res) => {
   const health = { uptime: process.uptime(), timestamp: Date.now(), services: {} };
+  
   try {
     await pool.query('SELECT 1');
     health.services.postgresql = 'ok';
   } catch (error) {
     health.services.postgresql = 'error';
   }
+  
   try {
     await cloudinary.api.ping();
     health.services.cloudinary = 'ok';
   } catch (error) {
     health.services.cloudinary = 'error';
   }
+  
   const allOk = Object.values(health.services).every(s => s === 'ok');
   res.status(allOk ? 200 : 503).json(health);
+});
+
+// Error handling middleware
+app.use((err, req, res, next) => {
+  console.error('Global error handler:', err);
+  res.status(500).json({ 
+    success: false, 
+    error: err.message || 'Erro interno do servidor' 
+  });
 });
 
 // Servidor
@@ -446,11 +573,6 @@ app.listen(PORT, () => {
 💾 Search: PostgreSQL FTS
 📡 Database: ${process.env.DB_HOST}
   `);
-});
-
-app.use((err, req, res, next) => {
-  console.error('Erro:', err);
-  res.status(500).json({ success: false, error: err.message || 'Erro interno' });
 });
 
 module.exports = app;
