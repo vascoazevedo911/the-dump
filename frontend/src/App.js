@@ -20,8 +20,6 @@ export default function TheDump() {
   const [error, setError] = useState(null);
   const [previewUrl, setPreviewUrl] = useState(null);
 
-  const logo = '/logo.png';
-
   const getAuthHeaders = useCallback(() => {
     const token = localStorage.getItem('token');
     return { 
