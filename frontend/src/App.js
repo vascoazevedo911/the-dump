@@ -47,11 +47,46 @@ export default function TheDump() {
   useEffect(() => {
     const token = localStorage.getItem('token');
     const savedUser = localStorage.getItem('user');
-    if (token && savedUser) {
-      setIsAuthenticated(true);
-      setUser(JSON.parse(savedUser));
-      loadDocuments();
-      loadStats();
+    if (token) {
+      if (savedUser) {
+        setIsAuthenticated(true);
+        setUser(JSON.parse(savedUser));
+        loadDocuments();
+        loadStats();
+      } else {
+        (async () => {
+          try {
+            const resp = await fetch(`${API_URL}/api/auth/me`, { headers: { 'Authorization': `Bearer ${token}` } });
+            const json = await resp.json();
+            if (json && json.success && json.user) {
+              localStorage.setItem('user', JSON.stringify(json.user));
+              setUser(json.user);
+              setIsAuthenticated(true);
+              loadDocuments();
+              loadStats();
+              return;
+            }
+          } catch (err) {
+            // ignore and fallback to decoding token
+          }
+
+          // Fallback: decode JWT payload to populate minimal user
+          try {
+            const parts = token.split('.');
+            if (parts.length >= 2) {
+              const payload = JSON.parse(atob(parts[1].replace(/-/g, '+').replace(/_/g, '/')));
+              const minimalUser = { id: payload.userId || payload.sub || null, email: payload.email || null, name: payload.name || payload.email || 'Google User' };
+              localStorage.setItem('user', JSON.stringify(minimalUser));
+              setUser(minimalUser);
+              setIsAuthenticated(true);
+              loadDocuments();
+              loadStats();
+            }
+          } catch (e) {
+            // give up
+          }
+        })();
+      }
     }
   }, [loadDocuments, loadStats]);
 
