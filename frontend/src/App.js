@@ -1,12 +1,12 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Upload, Search, FileText, File, Eye, Download, Trash2, Grid, List, CheckCircle, AlertCircle, Loader, X, Database, Zap, Image as ImageIcon, LogIn, LogOut, User, TrendingUp, Clock, FileCheck, Sparkles } from 'lucide-react';
+import { Upload, Search, FileText, File, Eye, Download, Trash2, Grid, List, CheckCircle, AlertCircle, Loader, X, Database, Zap, Image as ImageIcon, LogOut, User, TrendingUp, Clock, FileCheck, Sparkles } from 'lucide-react';
 
 const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:3000';
 
 export default function TheDump() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [user, setUser] = useState(null);
-  const [authMode, setAuthMode] = useState('login');
+  
   const [documents, setDocuments] = useState([]);
   const [searchResults, setSearchResults] = useState([]);
   const [stats, setStats] = useState({ total: 0, processing: 0, completed: 0, failed: 0 });
@@ -16,7 +16,7 @@ export default function TheDump() {
   const [selectedDoc, setSelectedDoc] = useState(null);
   const [showUploadZone, setShowUploadZone] = useState(false);
   const [viewMode, setViewMode] = useState('grid');
-  const [loading, setLoading] = useState(false);
+  
   const [error, setError] = useState(null);
   const [previewUrl, setPreviewUrl] = useState(null);
 
@@ -84,39 +84,7 @@ export default function TheDump() {
     };
   }, [selectedDoc, getAuthHeaders]);
 
-  const handleAuth = async (e) => {
-    e.preventDefault();
-    setError(null);
-    setLoading(true);
-    const formData = new FormData(e.target);
-    const data = {
-      email: formData.get('email'),
-      password: formData.get('password'),
-      ...(authMode === 'register' && { name: formData.get('name') })
-    };
-
-    try {
-      const endpoint = authMode === 'login' ? '/api/auth/login' : '/api/auth/register';
-      const response = await fetch(`${API_URL}${endpoint}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(data)
-      });
-      const result = await response.json();
-      if (!result.success) throw new Error(result.error);
-
-      localStorage.setItem('token', result.token);
-      localStorage.setItem('user', JSON.stringify(result.user));
-      setIsAuthenticated(true);
-      setUser(result.user);
-      loadDocuments();
-      loadStats();
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setLoading(false);
-    }
-  };
+  
 
   const handleLogout = () => {
     localStorage.removeItem('token');
