@@ -55,6 +55,22 @@ JWT_SECRET=a-strong-random-secret
 
 Observação: this service creates a local user record for the Google account (password is randomized) so the rest of the app uses the same `users` table.
 
+### Database migration for OAuth-only users
+
+The schema now supports OAuth-only users. Changes:
+
+- `users.password` is nullable
+- Added `users.oauth_provider`, `users.oauth_id`, and `users.oauth_token`
+
+If you already have a running database, run the migration file:
+
+```sql
+-- from project root
+psql <your-connection-string> -f backend/migrations/20260206_add_oauth_columns.sql
+```
+
+This will alter the `users` table to allow accounts created by Google OAuth without a password.
+
 ## Executar
 ```bash
 npm start
